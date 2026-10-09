@@ -24,8 +24,11 @@ jobs:
           node-version: '22'
           cache: npm
 
-      - name: Install locked dependencies
-        run: npm ci
+      - name: Synchronize upstream stale package lock for this build
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Install dependencies from regenerated lock
+        run: npm ci --no-audit --no-fund
 
       - name: Run parser and database tests
         run: npm test
