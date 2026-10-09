@@ -1,0 +1,66 @@
+name: Build JoyoseEdit KSU ZIP
+
+on:
+  push:
+    branches:
+      - build/joyoseedit-ksu-20261009
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run parser and database tests
+        run: npm test
+
+      - name: Typecheck and build WebUI
+        run: npm run build
+
+      - name: Package KernelSU module (no vendor property injection)
+        run: npm run package
+
+      - name: Verify module structure and SHA-256
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          archives = list(Path("release").glob("*.zip"))
+          assert len(archives) == 1, f"Expected one release ZIP, found: {archives}"
+          with ZipFile(archives[0]) as z:
+              names = set(z.namelist())
+              required = {"module.prop", "customize.sh", "post-fs-data.sh", "uninstall.sh", "bin/joyose-edit.sh", "webroot/index.html"}
+              assert required.issubset(names), f"Missing: {required - names}"
+              assert "system.prop" not in names, "Unsafe: unexpected system.prop"
+              assert z.testzip() is None, "Corrupt ZIP member"
+          print("ZIP verified:", archives[0])
+          PY
+          cd release
+          sha256sum ./*.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload installable ZIP and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: joyoseedit-v0.1.0-ksu-no-props
+          path: |
+            release/*.zip
+            release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
